@@ -1,0 +1,1571 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
+<meta name="theme-color" content="#667eea">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Universal File Viewer + Editor</title>
+
+<!-- PDF.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<!-- jsPDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- Mammoth (Word .docx) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<!-- SheetJS (Excel/CSV) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+    * {
+        margin: 0; padding: 0; box-sizing: border-box;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+        height: 100%;
+        overflow: hidden;
+        overscroll-behavior: none;
+    }
+
+    body {
+        background: #f0f2f5;
+        display: flex;
+        flex-direction: column;
+        color: #222;
+    }
+
+    /* ============ HEADER ============ */
+    .app-header {
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white;
+        padding: 14px 16px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+        flex-shrink: 0;
+        padding-top: calc(14px + env(safe-area-inset-top));
+    }
+    .app-header .logo { font-size: 1.4rem; }
+    .app-header .title { font-size: 1rem; font-weight: 700; flex: 1; }
+    .app-header .subtitle {
+        font-size: 0.7rem; opacity: 0.85;
+        display: block; font-weight: 400; margin-top: 2px;
+    }
+
+    /* ============ UPLOAD SCREEN ============ */
+    .upload-screen {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        overflow-y: auto;
+    }
+    .upload-box {
+        background: white;
+        border-radius: 20px;
+        padding: 28px 20px;
+        text-align: center;
+        border: 3px dashed #667eea;
+        width: 100%;
+        max-width: 400px;
+        transition: all 0.25s;
+        box-shadow: 0 8px 25px rgba(102,126,234,0.15);
+    }
+    .upload-box.dragover { background: #f0f4ff; border-color: #764ba2; transform: scale(1.02); }
+    .upload-icon { font-size: 3.5rem; margin-bottom: 12px; display: block; }
+    .upload-box h2 { color: #333; margin-bottom: 8px; font-size: 1.05rem; }
+    .upload-box p { color: #777; margin-bottom: 16px; font-size: 0.82rem; line-height: 1.5; }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white; border: none;
+        padding: 14px 28px;
+        border-radius: 12px;
+        font-size: 1rem; font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.15s;
+        box-shadow: 0 5px 15px rgba(102,126,234,0.4);
+        width: 100%;
+        min-height: 48px;
+    }
+    .btn-primary:active { transform: scale(0.97); }
+    #fileInput { display: none; }
+
+    /* ============ DAFTAR FORMAT ============ */
+    .format-list {
+        margin-top: 16px;
+        padding-top: 14px;
+        border-top: 1px dashed #e0e4ed;
+        font-size: 0.72rem;
+        color: #888;
+        line-height: 1.7;
+    }
+    .format-list strong { color: #667eea; }
+
+    /* ============ VIEWER ============ */
+    .viewer-screen {
+        display: none;
+        flex: 1;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    .viewer-screen.show { display: flex; }
+
+    /* File bar */
+    .file-bar {
+        background: white;
+        padding: 8px 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border-bottom: 1px solid #e5e7eb;
+        flex-shrink: 0;
+    }
+    .file-bar .file-icon { font-size: 1.3rem; }
+    .file-bar .file-name {
+        flex: 1;
+        font-weight: 600;
+        font-size: 0.82rem;
+        color: #333;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .file-bar .file-badge {
+        background: #667eea;
+        color: white;
+        font-size: 0.65rem;
+        font-weight: 700;
+        padding: 3px 8px;
+        border-radius: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+    }
+    .file-bar .close-x {
+        background: #fee;
+        color: #e74c3c;
+        border: none;
+        width: 34px; height: 34px;
+        border-radius: 50%;
+        font-size: 1rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    .file-bar .close-x:active { background: #e74c3c; color: white; }
+
+    /* Mode tabs */
+    .mode-tabs {
+        display: flex;
+        background: white;
+        padding: 0 6px;
+        border-bottom: 1px solid #e5e7eb;
+        flex-shrink: 0;
+    }
+    .mode-tab {
+        flex: 1;
+        padding: 11px 6px;
+        background: none;
+        border: none;
+        font-size: 0.86rem;
+        font-weight: 600;
+        color: #888;
+        cursor: pointer;
+        border-bottom: 3px solid transparent;
+        transition: all 0.2s;
+        min-height: 44px;
+    }
+    .mode-tab.active { color: #667eea; border-bottom-color: #667eea; }
+    .mode-tab:disabled { opacity: 0.35; cursor: not-allowed; }
+    .mode-tab:active:not(:disabled) { background: #f5f7ff; }
+
+    /* Content area */
+    .content-area {
+        flex: 1;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        background: #525659;
+        position: relative;
+    }
+    .content-area.light { background: #f0f2f5; }
+
+    /* ============ VIEWER CONTENT ============ */
+    .view-container {
+        padding: 10px;
+        min-height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+    }
+
+    /* PDF */
+    .view-container canvas {
+        display: block;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+        background: white;
+        max-width: 100%;
+        height: auto;
+        border-radius: 4px;
+    }
+
+    /* Image */
+    .view-container img {
+        max-width: 100%;
+        max-height: 100%;
+        border-radius: 6px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+
+    /* Video */
+    .view-container video {
+        width: 100%;
+        max-width: 100%;
+        border-radius: 8px;
+        background: black;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+
+    /* Audio */
+    .view-container .audio-wrap {
+        background: white;
+        border-radius: 16px;
+        padding: 30px 20px;
+        text-align: center;
+        width: 100%;
+        max-width: 420px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    }
+    .view-container .audio-icon {
+        font-size: 4rem;
+        margin-bottom: 16px;
+        display: block;
+    }
+    .view-container .audio-name {
+        font-weight: 700;
+        color: #333;
+        margin-bottom: 6px;
+        font-size: 0.9rem;
+        word-break: break-all;
+    }
+    .view-container .audio-meta {
+        color: #999;
+        font-size: 0.78rem;
+        margin-bottom: 18px;
+    }
+    .view-container audio {
+        width: 100%;
+        margin-top: 10px;
+    }
+
+    /* Text / Code viewer */
+    .text-viewer {
+        padding: 16px;
+        width: 100%;
+        min-height: 100%;
+        display: block;
+    }
+    .text-viewer pre {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        padding: 16px;
+        border-radius: 8px;
+        font-family: 'Courier New', Consolas, monospace;
+        font-size: 0.82rem;
+        line-height: 1.6;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+
+    /* HTML viewer (docx result) */
+    .html-viewer {
+        padding: 16px;
+        width: 100%;
+        min-height: 100%;
+    }
+    .html-viewer .doc-page {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        line-height: 1.7;
+        color: #333;
+        font-size: 0.92rem;
+    }
+    .html-viewer .doc-page h1,
+    .html-viewer .doc-page h2,
+    .html-viewer .doc-page h3 { color: #667eea; margin: 12px 0 8px; }
+    .html-viewer .doc-page p { margin-bottom: 10px; }
+    .html-viewer .doc-page table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+    .html-viewer .doc-page th,
+    .html-viewer .doc-page td { border: 1px solid #ddd; padding: 6px 10px; font-size: 0.85rem; }
+
+    /* Table viewer */
+    .table-viewer {
+        padding: 10px;
+        width: 100%;
+        min-height: 100%;
+        overflow-x: auto;
+    }
+    .table-viewer table {
+        border-collapse: collapse;
+        background: white;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        border-radius: 8px;
+        overflow: hidden;
+        font-size: 0.82rem;
+        min-width: 100%;
+    }
+    .table-viewer th {
+        background: #667eea;
+        color: white;
+        padding: 8px 10px;
+        text-align: left;
+        font-weight: 700;
+        white-space: nowrap;
+        position: sticky;
+        top: 0;
+    }
+    .table-viewer td {
+        padding: 6px 10px;
+        border-bottom: 1px solid #eee;
+        color: #333;
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .table-viewer tr:nth-child(even) td { background: #fafbff; }
+
+    /* Unsupported */
+    .unsupported-view {
+        background: white;
+        border-radius: 12px;
+        padding: 30px 20px;
+        text-align: center;
+        max-width: 340px;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+    }
+    .unsupported-view .big-icon { font-size: 3.5rem; margin-bottom: 14px; }
+    .unsupported-view h3 { color: #333; margin-bottom: 8px; font-size: 1rem; }
+    .unsupported-view p { color: #777; font-size: 0.85rem; margin-bottom: 18px; line-height: 1.5; }
+    .unsupported-view a {
+        display: inline-block;
+        background: #667eea;
+        color: white;
+        text-decoration: none;
+        padding: 12px 24px;
+        border-radius: 10px;
+        font-weight: 600;
+        font-size: 0.9rem;
+    }
+
+    /* ============ EDITOR ============ */
+    .edit-container {
+        display: none;
+        padding: 12px;
+        min-height: 100%;
+    }
+    .edit-container.show { display: block; }
+
+    .page-editor {
+        background: white;
+        border-radius: 12px;
+        padding: 14px;
+        margin-bottom: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .page-label {
+        font-size: 0.7rem;
+        color: #999;
+        margin-bottom: 8px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .editable-content {
+        min-height: 90px;
+        outline: none;
+        font-size: 0.92rem;
+        line-height: 1.7;
+        color: #333;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        padding: 8px;
+        border-radius: 8px;
+        -webkit-user-select: text;
+        user-select: text;
+    }
+    .editable-content:focus {
+        background: #f5f7ff;
+        box-shadow: 0 0 0 2px #667eea inset;
+    }
+    .editable-content:empty::before {
+        content: '(Klik untuk mulai menulis…)';
+        color: #bbb;
+        font-style: italic;
+    }
+
+    /* Editable table */
+    .edit-container table {
+        border-collapse: collapse;
+        width: 100%;
+        background: white;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        border-radius: 10px;
+        overflow: hidden;
+        font-size: 0.82rem;
+    }
+    .edit-container th {
+        background: #667eea;
+        color: white;
+        padding: 10px;
+        text-align: left;
+        font-weight: 700;
+        font-size: 0.78rem;
+    }
+    .edit-container td {
+        padding: 8px 10px;
+        border-bottom: 1px solid #eee;
+        outline: none;
+        min-width: 60px;
+    }
+    .edit-container td:focus {
+        background: #f5f7ff;
+        box-shadow: 0 0 0 2px #667eea inset;
+    }
+
+    /* ============ TOOLBAR EDIT ============ */
+    .edit-toolbar {
+        display: none;
+        background: white;
+        border-top: 1px solid #e5e7eb;
+        padding: 8px 10px;
+        gap: 6px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        flex-shrink: 0;
+        scrollbar-width: none;
+        padding-bottom: calc(8px + env(safe-area-inset-bottom));
+    }
+    .edit-toolbar::-webkit-scrollbar { display: none; }
+    .edit-toolbar.show { display: flex; }
+
+    .tool-btn {
+        background: #f5f7fa;
+        border: 1px solid #e0e4ed;
+        color: #444;
+        min-width: 42px;
+        height: 42px;
+        padding: 0 10px;
+        border-radius: 10px;
+        font-size: 0.92rem;
+        font-weight: 700;
+        cursor: pointer;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s;
+    }
+    .tool-btn:active { background: #667eea; color: white; border-color: #667eea; transform: scale(0.95); }
+    .tool-btn.danger { background: #fff0ee; color: #e74c3c; border-color: #ffd4cf; }
+    .tool-btn.color-picker { padding: 0; overflow: hidden; position: relative; }
+    .tool-btn.color-picker input {
+        position: absolute; inset: 0;
+        width: 100%; height: 100%;
+        opacity: 0; cursor: pointer;
+    }
+
+    /* ============ PAGE NAV ============ */
+    .page-nav {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 10px 14px;
+        background: white;
+        border-top: 1px solid #e5e7eb;
+        flex-shrink: 0;
+        padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    }
+    .nav-btn {
+        background: #f0f2f5;
+        border: none;
+        width: 46px; height: 46px;
+        border-radius: 50%;
+        font-size: 1.2rem;
+        color: #444;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s;
+    }
+    .nav-btn:active { background: #667eea; color: white; transform: scale(0.92); }
+    .nav-btn:disabled { opacity: 0.35; }
+    .page-counter {
+        font-weight: 700;
+        color: #333;
+        font-size: 0.9rem;
+        min-width: 68px;
+        text-align: center;
+        padding: 8px 12px;
+        background: #f0f2f5;
+        border-radius: 20px;
+    }
+
+    /* ============ SAVE BAR ============ */
+    .save-bar {
+        display: none;
+        background: white;
+        padding: 10px 12px;
+        gap: 8px;
+        border-top: 1px solid #e5e7eb;
+        flex-shrink: 0;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    }
+    .save-bar::-webkit-scrollbar { display: none; }
+    .save-bar.show { display: flex; }
+
+    .save-btn {
+        flex: 1;
+        min-width: 90px;
+        min-height: 44px;
+        padding: 10px 12px;
+        border: none;
+        border-radius: 12px;
+        color: white;
+        font-weight: 700;
+        font-size: 0.82rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        transition: transform 0.15s;
+        white-space: nowrap;
+    }
+    .save-btn:active { transform: scale(0.96); }
+    .save-txt    { background: linear-gradient(135deg, #667eea, #764ba2); }
+    .save-html   { background: linear-gradient(135deg, #e67e22, #d35400); }
+    .save-pdf    { background: linear-gradient(135deg, #27ae60, #16a085); }
+    .save-origin { background: linear-gradient(135deg, #8e44ad, #5b2c8a); }
+    .save-csv    { background: linear-gradient(135deg, #2980b9, #1f6391); }
+
+    /* ============ LOADING ============ */
+    .loading {
+        color: white;
+        padding: 40px 20px;
+        text-align: center;
+        font-size: 0.95rem;
+    }
+    .loading.dark { color: #555; }
+    .spinner {
+        display: inline-block;
+        width: 36px; height: 36px;
+        border: 3px solid rgba(255,255,255,0.3);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-bottom: 12px;
+    }
+    .loading.dark .spinner {
+        border-color: rgba(102,126,234,0.3);
+        border-top-color: #667eea;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ============ TOAST ============ */
+    .toast {
+        position: fixed;
+        left: 50%;
+        bottom: calc(20px + env(safe-area-inset-bottom));
+        transform: translate(-50%, 100px);
+        background: #333;
+        color: white;
+        padding: 12px 20px;
+        border-radius: 30px;
+        font-weight: 600;
+        font-size: 0.85rem;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        opacity: 0;
+        transition: all 0.3s;
+        z-index: 9999;
+        max-width: 90vw;
+        text-align: center;
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .toast.success { background: #27ae60; }
+    .toast.error   { background: #e74c3c; }
+
+    .hidden { display: none !important; }
+
+    /* ============ ZOOM ============ */
+    .zoom-controls {
+        position: fixed;
+        right: 12px;
+        bottom: calc(80px + env(safe-area-inset-bottom));
+        display: none;
+        flex-direction: column;
+        gap: 8px;
+        z-index: 100;
+    }
+    .zoom-controls.show { display: flex; }
+    .zoom-btn {
+        width: 44px; height: 44px;
+        background: rgba(255,255,255,0.95);
+        border: none;
+        border-radius: 50%;
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #333;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .zoom-btn:active { transform: scale(0.9); background: #667eea; color: white; }
+
+    /* Tablet */
+    @media (min-width: 768px) {
+        .upload-box { padding: 36px 28px; }
+        .upload-icon { font-size: 4rem; }
+        .view-container { padding: 20px; }
+    }
+</style>
+</head>
+<body>
+
+<!-- ============ HEADER ============ -->
+<header class="app-header">
+    <span class="logo">📂</span>
+    <div class="title">
+        Universal File Viewer + Editor
+        <span class="subtitle">Buka, lihat, edit — semua format file</span>
+    </div>
+</header>
+
+<!-- ============ UPLOAD SCREEN ============ -->
+<div class="upload-screen" id="uploadScreen">
+    <div class="upload-box" id="uploadBox">
+        <span class="upload-icon">📁</span>
+        <h2>Pilih File Apapun</h2>
+        <p>Ketuk tombol di bawah atau seret file ke sini. Semua diproses lokal di HP kamu.</p>
+        <button class="btn-primary" type="button" onclick="document.getElementById('fileInput').click()">
+            📎 Pilih File
+        </button>
+        <input type="file" id="fileInput" multiple
+               accept="*/*">
+
+        <div class="format-list">
+            <strong>Didukung:</strong><br>
+            📄 PDF, DOCX, TXT, MD, HTML, XML, JSON<br>
+            📊 XLSX, XLS, CSV, TSV, ODS<br>
+            🖼️ JPG, PNG, GIF, WEBP, BMP, SVG<br>
+            🎬 MP4, WEBM, OGG · 🎵 MP3, WAV, M4A<br>
+            💻 JS, PY, JAVA, C, CPP, CSS, dll
+        </div>
+    </div>
+</div>
+
+<!-- ============ VIEWER SCREEN ============ -->
+<div class="viewer-screen" id="viewerScreen">
+
+    <div class="file-bar">
+        <span class="file-icon" id="fileTypeIcon">📄</span>
+        <span class="file-name" id="fileName">dokumen.pdf</span>
+        <span class="file-badge" id="fileBadge">PDF</span>
+        <button class="close-x" type="button" onclick="closeViewer()" aria-label="Tutup">✖</button>
+    </div>
+
+    <div class="mode-tabs">
+        <button class="mode-tab active" type="button" id="tabView" onclick="switchMode('view')">👁️ Lihat</button>
+        <button class="mode-tab" type="button" id="tabEdit" onclick="switchMode('edit')">✏️ Edit</button>
+    </div>
+
+    <div class="content-area" id="contentArea">
+        <div id="viewArea">
+            <div class="loading">
+                <div class="spinner"></div>
+                <div>Memuat file…</div>
+            </div>
+        </div>
+        <div class="edit-container" id="editArea"></div>
+    </div>
+
+    <!-- Zoom (hanya PDF/image) -->
+    <div class="zoom-controls" id="zoomControls">
+        <button class="zoom-btn" type="button" onclick="zoomIn()" aria-label="Perbesar">➕</button>
+        <button class="zoom-btn" type="button" onclick="zoomOut()" aria-label="Perkecil">➖</button>
+    </div>
+
+    <!-- Navigasi halaman -->
+    <div class="page-nav hidden" id="pageNav">
+        <button class="nav-btn" type="button" id="prevBtn" onclick="prevPage()" aria-label="Sebelumnya">◀</button>
+        <span class="page-counter" id="pageInfo">- / -</span>
+        <button class="nav-btn" type="button" id="nextBtn" onclick="nextPage()" aria-label="Berikutnya">▶</button>
+    </div>
+
+    <!-- Toolbar edit -->
+    <div class="edit-toolbar" id="editToolbar">
+        <button class="tool-btn" type="button" onclick="formatDoc('bold')"><b>B</b></button>
+        <button class="tool-btn" type="button" onclick="formatDoc('italic')"><i>I</i></button>
+        <button class="tool-btn" type="button" onclick="formatDoc('underline')"><u>U</u></button>
+        <button class="tool-btn color-picker" type="button" title="Warna teks">
+            🎨
+            <input type="color" id="textColor" value="#333333"
+                   onchange="formatDoc('foreColor', this.value)">
+        </button>
+        <button class="tool-btn" type="button" onclick="formatDoc('removeFormat')" title="Hapus format">🧹</button>
+        <button class="tool-btn danger" type="button" onclick="resetEdit()">↩️ Reset</button>
+    </div>
+
+    <!-- Save bar -->
+    <div class="save-bar" id="saveBar"></div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+    // ============ KONFIG ============
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    // ============ ELEMEN ============
+    const uploadScreen = document.getElementById('uploadScreen');
+    const uploadBox    = document.getElementById('uploadBox');
+    const fileInput    = document.getElementById('fileInput');
+    const viewerScreen = document.getElementById('viewerScreen');
+    const contentArea  = document.getElementById('contentArea');
+    const viewArea     = document.getElementById('viewArea');
+    const editArea     = document.getElementById('editArea');
+    const editToolbar  = document.getElementById('editToolbar');
+    const saveBar      = document.getElementById('saveBar');
+    const pageNav      = document.getElementById('pageNav');
+    const zoomControls = document.getElementById('zoomControls');
+    const fileNameEl   = document.getElementById('fileName');
+    const fileBadgeEl  = document.getElementById('fileBadge');
+    const fileTypeIcon = document.getElementById('fileTypeIcon');
+    const prevBtn      = document.getElementById('prevBtn');
+    const nextBtn      = document.getElementById('nextBtn');
+    const pageInfo     = document.getElementById('pageInfo');
+    const tabView      = document.getElementById('tabView');
+    const tabEdit      = document.getElementById('tabEdit');
+    const toast        = document.getElementById('toast');
+
+    // ============ STATE ============
+    let currentFile   = null;
+    let currentUrl    = null;
+    let category      = 'unknown';
+    let pdfDoc        = null;
+    let currentPage   = 1;
+    let totalPages    = 0;
+    let mode          = 'view';
+    let pagesText     = [];
+    let originalName  = 'file';
+    let fileExt       = '';
+    let activeEditor  = null;
+    let zoomLevel     = 1;
+    const MAX_ZOOM    = 3;
+    const MIN_ZOOM    = 0.5;
+    let spreadsheetData = null; // untuk CSV/XLSX
+    let docxHTML      = null;   // untuk docx
+
+    // ============ DETEKSI KATEGORI ============
+    function detectCategory(filename) {
+        const ext = filename.split('.').pop().toLowerCase();
+        fileExt = ext;
+
+        if (ext === 'pdf') return 'pdf';
+        if (['jpg','jpeg','png','gif','webp','bmp','svg','ico'].includes(ext)) return 'image';
+        if (['mp4','webm','ogv','mov','m4v'].includes(ext)) return 'video';
+        if (['mp3','wav','m4a','aac','oga','ogg','flac'].includes(ext)) return 'audio';
+        if (['csv','tsv'].includes(ext)) return 'csv';
+        if (['xls','xlsx','ods'].includes(ext)) return 'spreadsheet';
+        if (ext === 'docx') return 'word';
+        if (['doc','ppt','pptx','odt','odp','pages','key'].includes(ext)) return 'unsupported';
+        if (['txt','md','json','xml','html','htm','css','js','ts','jsx','tsx','py',
+             'java','c','cpp','h','hpp','php','rb','go','rs','sh','yaml','yml',
+             'log','ini','conf','sql','svg'].includes(ext)) return 'text';
+        return 'unknown';
+    }
+
+    const CATEGORY_INFO = {
+        pdf:        { icon: '📄', badge: 'PDF',   editable: true  },
+        image:      { icon: '🖼️', badge: 'IMAGE', editable: false },
+        video:      { icon: '🎬', badge: 'VIDEO', editable: false },
+        audio:      { icon: '🎵', badge: 'AUDIO', editable: false },
+        text:       { icon: '📃', badge: 'TEXT',  editable: true  },
+        csv:        { icon: '📊', badge: 'CSV',   editable: true  },
+        spreadsheet:{ icon: '📊', badge: 'XLSX',  editable: true  },
+        word:       { icon: '📝', badge: 'DOCX',  editable: true  },
+        unsupported:{ icon: '❓', badge: 'FILE',  editable: false },
+        unknown:    { icon: '❓', badge: 'FILE',  editable: false }
+    };
+
+    // ============ TOAST ============
+    let toastTimer = null;
+    function showToast(msg, type = '') {
+        toast.textContent = msg;
+        toast.className = 'toast show ' + type;
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.className = 'toast ' + type, 2200);
+    }
+
+    // ============ UPLOAD EVENTS ============
+    uploadBox.addEventListener('click', (e) => {
+        if (e.target.tagName !== 'BUTTON') fileInput.click();
+    });
+
+    ['dragenter', 'dragover'].forEach(evt => {
+        uploadBox.addEventListener(evt, (e) => {
+            e.preventDefault(); e.stopPropagation();
+            uploadBox.classList.add('dragover');
+        });
+    });
+    ['dragleave', 'drop'].forEach(evt => {
+        uploadBox.addEventListener(evt, (e) => {
+            e.preventDefault(); e.stopPropagation();
+            uploadBox.classList.remove('dragover');
+        });
+    });
+    uploadBox.addEventListener('drop', (e) => {
+        if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) handleFile(e.target.files[0]);
+    });
+
+    // ============ HANDLE FILE ============
+    async function handleFile(file) {
+        if (!file) return;
+
+        // Reset state
+        if (currentUrl) URL.revokeObjectURL(currentUrl);
+        pdfDoc = null; currentPage = 1; totalPages = 0;
+        pagesText = []; mode = 'view'; zoomLevel = 1;
+        spreadsheetData = null; docxHTML = null;
+
+        currentFile  = file;
+        currentUrl   = URL.createObjectURL(file);
+        originalName = file.name.replace(/\.[^.]+$/, '') || 'file';
+
+        category = detectCategory(file.name);
+        const info = CATEGORY_INFO[category];
+
+        fileNameEl.textContent = file.name;
+        fileBadgeEl.textContent = info.badge;
+        fileTypeIcon.textContent = info.icon;
+
+        uploadScreen.classList.add('hidden');
+        viewerScreen.classList.add('show');
+
+        // Reset UI
+        tabView.classList.add('active');
+        tabEdit.classList.remove('active');
+        tabEdit.disabled = !info.editable;
+        editArea.classList.remove('show');
+        editArea.innerHTML = '';
+        editToolbar.classList.remove('show');
+        saveBar.classList.remove('show');
+        saveBar.innerHTML = '';
+        pageNav.classList.add('hidden');
+        zoomControls.classList.remove('show');
+        contentArea.classList.remove('light');
+
+        viewArea.innerHTML = `
+            <div class="loading">
+                <div class="spinner"></div>
+                <div>Memuat ${info.badge}…</div>
+            </div>`;
+
+        try {
+            await renderByCategory(file);
+        } catch (err) {
+            console.error(err);
+            viewArea.innerHTML = `
+                <div class="view-container">
+                    <div class="unsupported-view">
+                        <div class="big-icon">❌</div>
+                        <h3>Gagal membuka file</h3>
+                        <p>${err.message}</p>
+                        <a href="${currentUrl}" target="_blank" rel="noopener">Coba Buka di Tab Baru</a>
+                    </div>
+                </div>`;
+            showToast('❌ ' + err.message, 'error');
+        }
+    }
+
+    // ============ RENDER BY CATEGORY ============
+    async function renderByCategory(file) {
+        switch (category) {
+            case 'pdf':        return await renderPDF(file);
+            case 'image':      return renderImage();
+            case 'video':      return renderVideo();
+            case 'audio':      return renderAudio(file);
+            case 'text':       return await renderText(file);
+            case 'csv':        return await renderCSV(file);
+            case 'spreadsheet':return await renderSpreadsheet(file);
+            case 'word':       return await renderWord(file);
+            case 'unsupported':
+            case 'unknown':
+            default:           return renderUnsupported(file);
+        }
+    }
+
+    // ============ PDF ============
+    async function renderPDF(file) {
+        const arrayBuffer = await file.arrayBuffer();
+        pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        totalPages = pdfDoc.numPages;
+
+        viewArea.innerHTML = `<div class="view-container" id="pdfContainer"></div>`;
+        pageNav.classList.remove('hidden');
+        zoomControls.classList.add('show');
+
+        await renderPDFPage(currentPage);
+        updatePageInfo();
+        showSaveBar('pdf');
+    }
+
+    async function renderPDFPage(num) {
+        if (!pdfDoc) return;
+        const container = document.getElementById('pdfContainer');
+        if (!container) return;
+
+        container.innerHTML = `
+            <div class="loading">
+                <div class="spinner"></div>
+                <div>Halaman ${num}…</div>
+            </div>`;
+
+        const page = await pdfDoc.getPage(num);
+        const containerWidth = Math.max(container.clientWidth - 20, 200);
+        const baseViewport = page.getViewport({ scale: 1 });
+        const baseScale = containerWidth / baseViewport.width;
+        const scale = baseScale * zoomLevel;
+        const viewport = page.getViewport({ scale });
+
+        const dpr = window.devicePixelRatio || 1;
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = viewport.width * dpr;
+        canvas.height = viewport.height * dpr;
+        canvas.style.width = viewport.width + 'px';
+        canvas.style.height = viewport.height + 'px';
+        ctx.scale(dpr, dpr);
+
+        container.innerHTML = '';
+        container.appendChild(canvas);
+
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        contentArea.scrollTop = 0;
+    }
+
+    // ============ IMAGE ============
+    function renderImage() {
+        viewArea.innerHTML = `
+            <div class="view-container">
+                <img src="${currentUrl}" alt="preview">
+            </div>`;
+        showSaveBar('image');
+    }
+
+    // ============ VIDEO ============
+    function renderVideo() {
+        viewArea.innerHTML = `
+            <div class="view-container">
+                <video src="${currentUrl}" controls playsinline></video>
+            </div>`;
+        showSaveBar('video');
+    }
+
+    // ============ AUDIO ============
+    function renderAudio(file) {
+        const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+        viewArea.innerHTML = `
+            <div class="view-container">
+                <div class="audio-wrap">
+                    <span class="audio-icon">🎵</span>
+                    <div class="audio-name">${escapeHtml(file.name)}</div>
+                    <div class="audio-meta">${sizeMB} MB · ${fileExt.toUpperCase()}</div>
+                    <audio src="${currentUrl}" controls></audio>
+                </div>
+            </div>`;
+        showSaveBar('audio');
+    }
+
+    // ============ TEXT ============
+    async function renderText(file) {
+        const text = await file.text();
+        viewArea.innerHTML = `
+            <div class="text-viewer">
+                <pre>${escapeHtml(text)}</pre>
+            </div>`;
+        // Simpan untuk editor
+        viewArea._rawText = text;
+        showSaveBar('text');
+    }
+
+    // ============ CSV ============
+    async function renderCSV(file) {
+        const arrayBuffer = await file.arrayBuffer();
+        const wb = XLSX.read(arrayBuffer, { type: 'array' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+
+        spreadsheetData = data;
+        viewArea.innerHTML = buildTableViewer(data);
+        showSaveBar('csv');
+    }
+
+    // ============ SPREADSHEET ============
+    async function renderSpreadsheet(file) {
+        const arrayBuffer = await file.arrayBuffer();
+        const wb = XLSX.read(arrayBuffer, { type: 'array' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+
+        spreadsheetData = data;
+        viewArea.innerHTML = buildTableViewer(data);
+        showSaveBar('spreadsheet');
+    }
+
+    // Build tabel viewer
+    function buildTableViewer(data) {
+        if (!data || data.length === 0) {
+            return `<div class="view-container"><div class="unsupported-view">
+                <div class="big-icon">📭</div>
+                <h3>Tabel kosong</h3>
+                <p>File ini tidak memiliki data.</p>
+            </div></div>`;
+        }
+
+        const maxCols = Math.max(...data.map(r => r.length), 1);
+        let html = '<div class="table-viewer"><table><thead><tr>';
+        for (let c = 0; c < maxCols; c++) {
+            html += `<th>${escapeHtml(String(data[0][c] ?? ''))}</th>`;
+        }
+        html += '</tr></thead><tbody>';
+
+        for (let r = 1; r < data.length; r++) {
+            html += '<tr>';
+            for (let c = 0; c < maxCols; c++) {
+                html += `<td>${escapeHtml(String(data[r][c] ?? ''))}</td>`;
+            }
+            html += '</tr>';
+        }
+        html += '</tbody></table></div>';
+        return html;
+    }
+
+    // ============ WORD (DOCX) ============
+    async function renderWord(file) {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        docxHTML = result.value;
+
+        viewArea.innerHTML = `
+            <div class="html-viewer">
+                <div class="doc-page">${docxHTML || '<p><i>(Dokumen kosong)</i></p>'}</div>
+            </div>`;
+        showSaveBar('word');
+    }
+
+    // ============ UNSUPPORTED ============
+    function renderUnsupported(file) {
+        const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+        viewArea.innerHTML = `
+            <div class="view-container">
+                <div class="unsupported-view">
+                    <div class="big-icon">📎</div>
+                    <h3>Preview tidak tersedia</h3>
+                    <p>Format <b>${fileExt.toUpperCase()}</b> (${sizeMB} MB) tidak bisa ditampilkan langsung. Buka di tab baru untuk melihatnya.</p>
+                    <a href="${currentUrl}" target="_blank" rel="noopener">Buka di Tab Baru</a>
+                </div>
+            </div>`;
+        showSaveBar('unsupported');
+    }
+
+    // ============ NAVIGASI HALAMAN ============
+    function prevPage() {
+        if (currentPage <= 1 || !pdfDoc) return;
+        currentPage--;
+        renderPDFPage(currentPage);
+        updatePageInfo();
+    }
+    function nextPage() {
+        if (currentPage >= totalPages || !pdfDoc) return;
+        currentPage++;
+        renderPDFPage(currentPage);
+        updatePageInfo();
+    }
+    function updatePageInfo() {
+        pageInfo.textContent = `${currentPage} / ${totalPages}`;
+        prevBtn.disabled = currentPage <= 1;
+        nextBtn.disabled = currentPage >= totalPages;
+    }
+
+    // ============ ZOOM (khusus PDF) ============
+    function zoomIn() {
+        if (zoomLevel >= MAX_ZOOM) return;
+        zoomLevel = Math.min(MAX_ZOOM, zoomLevel + 0.25);
+        if (category === 'pdf') renderPDFPage(currentPage);
+    }
+    function zoomOut() {
+        if (zoomLevel <= MIN_ZOOM) return;
+        zoomLevel = Math.max(MIN_ZOOM, zoomLevel - 0.25);
+        if (category === 'pdf') renderPDFPage(currentPage);
+    }
+
+    // ============ MODE SWITCH ============
+    async function switchMode(newMode) {
+        if (newMode === mode) return;
+        const info = CATEGORY_INFO[category];
+        if (newMode === 'edit' && !info.editable) return;
+
+        if (newMode === 'edit') {
+            viewArea.style.display = 'none';
+            editArea.classList.add('show');
+            editArea.innerHTML = `
+                <div class="loading dark" style="padding:40px 20px;">
+                    <div class="spinner"></div>
+                    <div style="margin-top:10px;">Menyiapkan editor…</div>
+                </div>`;
+            zoomControls.classList.remove('show');
+            pageNav.classList.add('hidden');
+            contentArea.classList.add('light');
+
+            try {
+                await buildEditor();
+                editToolbar.classList.add('show');
+                tabView.classList.remove('active');
+                tabEdit.classList.add('active');
+                mode = 'edit';
+                showToast('✏️ Mode edit aktif', 'success');
+            } catch (err) {
+                console.error(err);
+                showToast('❌ ' + err.message, 'error');
+                // balik ke view
+                editArea.classList.remove('show');
+                viewArea.style.display = 'block';
+                contentArea.classList.remove('light');
+                if (category === 'pdf') {
+                    zoomControls.classList.add('show');
+                    pageNav.classList.remove('hidden');
+                }
+            }
+        } else {
+            editArea.classList.remove('show');
+            editToolbar.classList.remove('show');
+            viewArea.style.display = 'block';
+            contentArea.classList.remove('light');
+            tabEdit.classList.remove('active');
+            tabView.classList.add('active');
+            mode = 'view';
+
+            if (category === 'pdf') {
+                zoomControls.classList.add('show');
+                pageNav.classList.remove('hidden');
+            }
+        }
+    }
+
+    // ============ BUILD EDITOR ============
+    async function buildEditor() {
+        editArea.innerHTML = '';
+
+        if (category === 'pdf') {
+            const texts = await extractPDFText();
+            pagesText = texts;
+            texts.forEach((text, idx) => {
+                editArea.appendChild(createPageEditor(`📄 Halaman ${idx + 1}`, text));
+            });
+        }
+        else if (category === 'text') {
+            const text = viewArea._rawText || '';
+            editArea.appendChild(createPageEditor(`📃 ${fileExt.toUpperCase()}`, text));
+        }
+        else if (category === 'word') {
+            editArea.appendChild(createHtmlEditor(`📝 Dokumen Word`, docxHTML || ''));
+        }
+        else if (category === 'csv' || category === 'spreadsheet') {
+            const tableWrap = document.createElement('div');
+            tableWrap.style.overflowX = 'auto';
+            tableWrap.innerHTML = buildEditableTable(spreadsheetData);
+            editArea.appendChild(tableWrap);
+        }
+        else {
+            throw new Error('Format ini tidak bisa diedit');
+        }
+    }
+
+    function createPageEditor(label, text) {
+        const pageDiv = document.createElement('div');
+        pageDiv.className = 'page-editor';
+
+        const lbl = document.createElement('div');
+        lbl.className = 'page-label';
+        lbl.textContent = label;
+
+        const content = document.createElement('div');
+        content.className = 'editable-content';
+        content.contentEditable = 'true';
+        content.spellcheck = false;
+        content.textContent = text || '';
+        content.addEventListener('focus', () => activeEditor = content);
+        content.addEventListener('click', () => activeEditor = content);
+
+        pageDiv.appendChild(lbl);
+        pageDiv.appendChild(content);
+        return pageDiv;
+    }
+
+    function createHtmlEditor(label, html) {
+        const pageDiv = document.createElement('div');
+        pageDiv.className = 'page-editor';
+
+        const lbl = document.createElement('div');
+        lbl.className = 'page-label';
+        lbl.textContent = label;
+
+        const content = document.createElement('div');
+        content.className = 'editable-content';
+        content.contentEditable = 'true';
+        content.spellcheck = false;
+        content.innerHTML = html || '';
+        content.addEventListener('focus', () => activeEditor = content);
+        content.addEventListener('click', () => activeEditor = content);
+
+        pageDiv.appendChild(lbl);
+        pageDiv.appendChild(content);
+        return pageDiv;
+    }
+
+    function buildEditableTable(data) {
+        if (!data || data.length === 0) return '<p style="padding:20px;text-align:center;color:#999;">Tabel kosong</p>';
+        const maxCols = Math.max(...data.map(r => r.length), 1);
+
+        let html = '<table>';
+        html += '<thead><tr>';
+        for (let c = 0; c < maxCols; c++) {
+            html += `<th contenteditable="true">${escapeHtml(String(data[0][c] ?? ''))}</th>`;
+        }
+        html += '</tr></thead><tbody>';
+
+        for (let r = 1; r < data.length; r++) {
+            html += '<tr>';
+            for (let c = 0; c < maxCols; c++) {
+                html += `<td contenteditable="true">${escapeHtml(String(data[r][c] ?? ''))}</td>`;
+            }
+            html += '</tr>';
+        }
+        html += '</tbody></table>';
+        return html;
+    }
+
+    // ============ EXTRACT PDF TEXT ============
+    async function extractPDFText() {
+        if (!pdfDoc) return [];
+        const result = [];
+        for (let i = 1; i <= totalPages; i++) {
+            const page = await pdfDoc.getPage(i);
+            const content = await page.getTextContent();
+
+            let lastY = null, text = '';
+            content.items.forEach(item => {
+                const y = item.transform[5];
+                if (lastY !== null && Math.abs(y - lastY) > 5) text += '\n';
+                else if (text && !text.endsWith(' ') && !text.endsWith('\n')) text += ' ';
+                text += item.str;
+                lastY = y;
+            });
+            result.push(text.trim());
+        }
+        return result;
+    }
+
+    // ============ FORMAT DOKUMEN ============
+    function formatDoc(cmd, value = null) {
+        if (!activeEditor) {
+            const first = editArea.querySelector('.editable-content');
+            if (!first) { showToast('⚠️ Klik dulu di kotak teks', 'error'); return; }
+            activeEditor = first;
+            first.focus();
+        }
+        document.execCommand(cmd, false, value);
+        activeEditor.focus();
+    }
+
+    // ============ RESET EDIT ============
+    async function resetEdit() {
+        if (!confirm('Reset semua perubahan ke bentuk asli?')) return;
+        try {
+            await buildEditor();
+            showToast('↩️ Direset', 'success');
+        } catch (err) {
+            showToast('❌ ' + err.message, 'error');
+        }
+    }
+
+    // ============ AMBIL HASIL EDIT ============
+    function getEditedResult() {
+        if (category === 'csv' || category === 'spreadsheet') {
+            const table = editArea.querySelector('table');
+            if (!table) return null;
+            const rows = [];
+            table.querySelectorAll('tr').forEach(tr => {
+                const row = [];
+                tr.querySelectorAll('th, td').forEach(cell => {
+                    row.push(cell.innerText.trim());
+                });
+                rows.push(row);
+            });
+            return { type: 'table', rows };
+        }
+
+        const editors = editArea.querySelectorAll('.editable-content');
+        const arr = [];
+        editors.forEach(ed => arr.push({ text: ed.innerText, html: ed.innerHTML }));
+        return { type: 'text', pages: arr };
+    }
+
+    // ============ SAVE BAR ============
+    function showSaveBar(type) {
+        saveBar.innerHTML = '';
+        saveBar.classList.add('show');
+
+        const addBtn = (label, cls, fn) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'save-btn ' + cls;
+            b.textContent = label;
+            b.onclick = fn;
+            saveBar.appendChild(b);
+        };
+
+        // Tombol dasar
+        if (['pdf','text','csv','spreadsheet','word'].includes(type)) {
+            addBtn('💾 .txt', 'save-txt', () => saveAs('txt'));
+            addBtn('💾 .html', 'save-html', () => saveAs('html'));
+            addBtn('💾 .pdf', 'save-pdf', () => saveAs('pdf'));
+        }
+
+        if (type === 'csv' || type === 'spreadsheet') {
+            addBtn('💾 .xlsx', 'save-csv', () => saveAs('xlsx'));
+            addBtn('💾 .csv', 'save-csv', () => saveAs('csv'));
+        }
+
+        if (type === 'text') {
+            addBtn(`💾 .${fileExt}`, 'save-origin', () => saveAs('original'));
+        }
+
+        if (type === 'image' || type === 'video' || type === 'audio') {
+            addBtn('⬇️ Unduh File', 'save-origin', () => downloadOriginal());
+        }
+
+        if (type === 'unsupported') {
+            addBtn('⬇️ Unduh File', 'save-origin', () => downloadOriginal());
+        }
+    }
+
+    // ============ SAVE HANDLER ============
+    function saveAs(format) {
+        const result = getEditedResult();
+
+        if (format === 'original' && category === 'text') {
+            const text = result?.pages?.[0]?.text ?? '';
+            downloadBlob(text, `${originalName}.${fileExt}`, 'text/plain');
+            showToast(`✅ Tersimpan .${fileExt}`, 'success');
+            return;
+        }
+
+        // Plain text
+        let plainText = '';
+        if (result?.type === 'text') {
+            plainText = result.pages.map((p, i) =>
+                `===== Halaman ${i + 1} =====\n${p.text}`).join('\n\n');
+        } else if (result?.type === 'table') {
+            plainText = result.rows.map(r => r.join('\t')).join('\n');
+        }
+
+        if (format === 'txt') {
+            downloadBlob(plainText, `${originalName}-edited.txt`, 'text/plain');
+            showToast('✅ Tersimpan .txt', 'success');
+        }
+        else if (format === 'html') {
+            let body = '';
+            if (result?.type === 'text') {
+                body = result.pages.map((p, i) => `
+                    <div class="page">
+                        <div class="page-label">Bagian ${i + 1}</div>
+                        <div>${p.html}</div>
+                    </div>`).join('');
+            } else if (result?.type === 'table') {
+                body = '<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%">';
+                result.rows.forEach((r, i) => {
+                    body += '<tr>';
+                    r.forEach(c => body += `<${i === 0 ? 'th' : 'td'}>${escapeHtml(c)}</${i === 0 ? 'th' : 'td'}>`);
+                    body += '</tr>';
+                });
+                body += '</table>';
+            }
+            const html = `<!DOCTYPE html>
+<html lang="id"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escapeHtml(originalName)} - Edited</title>
+<style>
+    body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 20px auto; padding: 16px; line-height: 1.7; color: #333; }
+    h1 { color: #667eea; border-bottom: 2px solid #667eea; padding-bottom: 10px; font-size: 1.4rem; }
+    .page { background: #f9f9f9; padding: 18px; margin-bottom: 16px; border-radius: 10px; }
+    .page-label { color: #999; font-size: 0.8rem; text-transform: uppercase; font-weight: 700; margin-bottom: 10px; }
+    table { border-collapse: collapse; width: 100%; } th { background: #667eea; color: white; } th, td { padding: 6px 10px; border: 1px solid #ddd; font-size: 0.9rem; }
+</style></head><body>
+<h1>${escapeHtml(originalName)}</h1>
+${body}
+</body></html>`;
+            downloadBlob(html, `${originalName}-edited.html`, 'text/html');
+            showToast('✅ Tersimpan .html', 'success');
+        }
+        else if (format === 'pdf') {
+            try {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+                const marginX = 14, marginY = 14;
+                const pw = doc.internal.pageSize.getWidth();
+                const ph = doc.internal.pageSize.getHeight();
+                const maxW = pw - marginX * 2;
+                let y = marginY;
+
+                const addText = (text) => {
+                    const lines = doc.splitTextToSize(text, maxW);
+                    lines.forEach(line => {
+                        if (y + 6 > ph - marginY) { doc.addPage(); y = marginY; }
+                        doc.text(line, marginX, y);
+                        y += 6;
+                    });
+                };
+
+                if (result?.type === 'text') {
+                    result.pages.forEach((p, i) => {
+                        if (i > 0) { doc.addPage(); y = marginY; }
+                        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(150);
+                        doc.text(`Bagian ${i + 1}`, marginX, y); y += 8;
+                        doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(40);
+                        addText(p.text || '');
+                    });
+                } else if (result?.type === 'table') {
+                    // render tabel sebagai teks sederhana
+                    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(40);
+                    result.rows.forEach((r, i) => {
+                        if (i === 0) { doc.setFont('helvetica', 'bold'); }
+                        else { doc.setFont('helvetica', 'normal'); }
+                        addText(r.join('  |  '));
+                    });
+                }
+
+                doc.save(`${originalName}-edited.pdf`);
+                showToast('✅ Tersimpan .pdf', 'success');
+            } catch (err) {
+                console.error(err);
+                showToast('❌ Gagal simpan PDF', 'error');
+            }
+        }
+        else if (format === 'csv') {
+            if (result?.type !== 'table') { showToast('⚠️ Bukan tabel', 'error'); return; }
+            const csv = result.rows.map(r =>
+                r.map(c => {
+                    const s = String(c ?? '');
+                    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+                }).join(',')
+            ).join('\n');
+            downloadBlob('\uFEFF' + csv, `${originalName}-edited.csv`, 'text/csv');
+            showToast('✅ Tersimpan .csv', 'success');
+        }
+        else if (format === 'xlsx') {
+            if (result?.type !== 'table') { showToast('⚠️ Bukan tabel', 'error'); return; }
+            try {
+                const ws = XLSX.utils.aoa_to_sheet(result.rows);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+                XLSX.writeFile(wb, `${originalName}-edited.xlsx`);
+                showToast('✅ Tersimpan .xlsx', 'success');
+            } catch (err) {
+                console.error(err);
+                showToast('❌ Gagal simpan xlsx', 'error');
+            }
+        }
+    }
+
+    // ============ DOWNLOAD ORIGINAL ============
+    function downloadOriginal() {
+        const a = document.createElement('a');
+        a.href = currentUrl;
+        a.download = currentFile.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        showToast('⬇️ Mengunduh file…', 'success');
+    }
+
+    // ============ HELPERS ============
+    function downloadBlob(content, filename, mime) {
+        const blob = new Blob([content], { type: mime + ';charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+    }
+
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // ============ CLOSE ============
+    function closeViewer() {
+        if (mode === 'edit') {
+            if (!confirm('Tutup tanpa menyimpan perubahan?')) return;
+        }
+        if (currentUrl) { URL.revokeObjectURL(currentUrl); currentUrl = null; }
+        pdfDoc = null; currentPage = 1; totalPages = 0;
+        pagesText = []; mode = 'view'; zoomLevel = 1;
+        spreadsheetData = null; docxHTML = null;
+        viewArea.innerHTML = ''; editArea.innerHTML = '';
+
+        viewerScreen.classList.remove('show');
+        uploadScreen.classList.remove('hidden');
+        fileInput.value = '';
+    }
+
+    // ============ DOUBLE TAP ZOOM (PDF) ============
+    let lastTap = 0;
+    document.addEventListener('touchend', (e) => {
+        if (category !== 'pdf' || mode !== 'view') return;
+        if (!e.target.closest('#viewArea')) return;
+        const now = Date.now();
+        if (now - lastTap < 300) {
+            zoomLevel = zoomLevel > 1 ? 1 : 2;
+            renderPDFPage(currentPage);
+        }
+        lastTap = now;
+    });
+</script>
+
+</body>
+</html>
